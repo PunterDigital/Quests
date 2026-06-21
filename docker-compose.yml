@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: quest-tracker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: quest
+      POSTGRES_PASSWORD: quest
+      POSTGRES_DB: questtracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - quest-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quest -d questtracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Opt-in full-stack app service. The default `docker compose up` only starts
+  # the database (for local `npm run dev`). To run the built image alongside it:
+  #   docker compose --profile app up -d --build
+  app:
+    profiles: ["app"]
+    build: .
+    container_name: quest-tracker-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://quest:quest@db:5432/questtracker?schema=public
+    ports:
+      - "3000:3000"
+
+volumes:
+  quest-db-data:

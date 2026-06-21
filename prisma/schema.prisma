@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuestType {
+  DAILY
+  WEEKLY
+}
+
+enum QuestStatus {
+  TODO
+  ACTIVE
+  DONE
+  ABANDONED
+}
+
+model Quest {
+  id          String      @id @default(cuid())
+  name        String
+  type        QuestType   @default(DAILY)
+  status      QuestStatus @default(TODO)
+  inPool      Boolean     @default(false)
+  durationMin Int         @default(0) // 0 = no time limit
+  startedAt   DateTime? // set when status becomes ACTIVE
+  awardedXp   Int? // XP granted for the current completion (null = unrewarded)
+  sort        Int         @default(0) // manual ordering / insertion order
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([type, status])
+}
+
+// Single-row player profile holding cumulative XP. Level is derived from XP.
+model Profile {
+  id        String   @id @default("singleton")
+  totalXp   Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+// Single-row application settings (id is always "singleton").
+model Settings {
+  id             String   @id @default("singleton")
+  discordWebhook String?
+  dailyLimit     Int      @default(5)
+  weeklyLimit    Int      @default(15)
+  updatedAt      DateTime @updatedAt
+}
