@@ -114,18 +114,17 @@ export async function addQuest(input: {
   const name = input.name.trim().slice(0, 60);
   if (!name) throw new ApiError(400, "Quest name is required");
 
-  const settings = await getSettings();
-  const limit = activeLimit(input.type, settings);
-  const activeCount = await countActiveSlots(input.type);
   const maxSort = await prisma.quest.aggregate({ _max: { sort: true } });
 
+  // New quests are queued in the pool; they only become active when drawn on the
+  // next daily/weekly run (reset) or promoted manually.
   await prisma.quest.create({
     data: {
       name,
       type: input.type,
       status: "TODO",
       durationMin: clampInt(input.durationMin, 0, 1440),
-      inPool: activeCount >= limit,
+      inPool: true,
       sort: (maxSort._max.sort ?? 0) + 1,
     },
   });

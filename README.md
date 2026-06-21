@@ -49,17 +49,23 @@ npm start
 
 ## How it works
 
-Quests are **Daily** or **Weekly**. Each type has an **active limit**
-(default 5 daily / 15 weekly — configurable in Settings). When you add more than
-the limit, extras drop into the **Pool**; you can promote a pooled quest into an
-open active slot, or demote an active one back to the pool.
+Quests are **Daily** or **Weekly**. There are two views:
+
+- **Pool** — your full backlog. Every new quest is added here (queued), never
+  straight onto the active board.
+- **Quests** — the current run: the quests drawn from the pool for this
+  day/week.
+
+Each type has an **active limit** (default 5 daily / 15 weekly — configurable in
+Settings). A **run** (the 🎲 Draw button, or the daily/weekly reset) sends a
+scope back to Todo and **randomly draws** up to the limit from the pool to fill
+the active board — a "random quest of the day" mechanic. You can also manually
+**Activate** a specific pooled quest into a free slot, or send an active one back
+to the pool.
 
 A quest moves `Todo → Active → Done` (or `Abandoned/Skipped`). Starting a quest
 stamps a start time; quests with a duration show a **live countdown** and flag
-**OVERDUE** when time runs out. **Reset** sends a scope back to Todo and then
-**randomly draws** which pooled quests fill the active slots — a "random quest
-of the day" mechanic. (The original firmware refilled deterministically by
-creation order; this port randomizes the draw.)
+**OVERDUE** when time runs out.
 
 ### XP & levels
 

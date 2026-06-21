@@ -21,6 +21,7 @@ function displaySort(a: QuestDTO, b: QuestDTO) {
 }
 
 interface Group {
+  type: QuestType;
   active: QuestDTO[];
   pool: QuestDTO[];
   done: number;
@@ -28,9 +29,11 @@ interface Group {
   limit: number;
 }
 
+type Tab = "quests" | "pool" | "settings";
+
 export default function Home() {
   const { data, error, isLoading, isValidating, mutate } = useAppState();
-  const [tab, setTab] = useState<"quests" | "settings">("quests");
+  const [tab, setTab] = useState<Tab>("quests");
   const [toast, setToast] = useState<{ msg: string; kind: "xp" | "level" } | null>(
     null,
   );
@@ -47,6 +50,7 @@ export default function Home() {
       const active = all.filter((q) => !q.inPool).sort(displaySort);
       const pool = all.filter((q) => q.inPool).sort((a, b) => a.sort - b.sort);
       return {
+        type,
         active,
         pool,
         done: active.filter((q) => q.status === "DONE").length,
@@ -62,6 +66,7 @@ export default function Home() {
 
   const overallDone = groups.daily.done + groups.weekly.done;
   const overallTotal = groups.daily.total + groups.weekly.total;
+  const poolCount = groups.daily.pool.length + groups.weekly.pool.length;
 
   // Apply a mutation that returns fresh state, updating the cache immediately.
   const withState = async (p: Promise<AppState>) => {
@@ -86,6 +91,8 @@ export default function Home() {
   };
 
   const onDelete = (id: string) => withState(api.remove(id)).then(() => {});
+  const onDraw = (scope: QuestType) =>
+    withState(api.reset(scope)).then(() => {});
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 pb-16 pt-5">
@@ -111,6 +118,14 @@ export default function Home() {
         <nav className="flex gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1">
           <TabBtn active={tab === "quests"} onClick={() => setTab("quests")}>
             Quests
+          </TabBtn>
+          <TabBtn active={tab === "pool"} onClick={() => setTab("pool")}>
+            Pool
+            {poolCount > 0 && (
+              <span className="ml-1 rounded-full bg-[var(--purple)] px-1.5 text-[10px] font-bold text-[#0c0c14]">
+                {poolCount}
+              </span>
+            )}
           </TabBtn>
           <TabBtn active={tab === "settings"} onClick={() => setTab("settings")}>
             ⚙
@@ -138,9 +153,9 @@ export default function Home() {
         />
       )}
 
+      {/* Active board — the current run */}
       {data && tab === "quests" && (
         <>
-          {/* Overall progress */}
           <section className="flex flex-col gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold">Overall progress</span>
@@ -157,16 +172,43 @@ export default function Home() {
             />
           </section>
 
-          <AddQuestForm onAdd={onAdd} />
-
           <ScopeSection
             title="Daily"
             color="var(--green)"
             group={groups.daily}
             onAction={onAction}
             onDelete={onDelete}
+            onDraw={onDraw}
+            onGoToPool={() => setTab("pool")}
           />
           <ScopeSection
+            title="Weekly"
+            color="var(--orange)"
+            group={groups.weekly}
+            onAction={onAction}
+            onDelete={onDelete}
+            onDraw={onDraw}
+            onGoToPool={() => setTab("pool")}
+          />
+        </>
+      )}
+
+      {/* Pool — the full backlog of quests */}
+      {data && tab === "pool" && (
+        <>
+          <AddQuestForm onAdd={onAdd} />
+          <p className="px-1 text-xs text-[var(--muted)]">
+            New quests are queued here. Each daily/weekly run draws from the pool —
+            or tap <strong>Activate</strong> to add one to the current run now.
+          </p>
+          <PoolSection
+            title="Daily"
+            color="var(--green)"
+            group={groups.daily}
+            onAction={onAction}
+            onDelete={onDelete}
+          />
+          <PoolSection
             title="Weekly"
             color="var(--orange)"
             group={groups.weekly}
@@ -192,20 +234,36 @@ export default function Home() {
   );
 }
 
+// Active board section: shows the current run for a scope + a "Draw" action.
 function ScopeSection({
   title,
   color,
   group,
   onAction,
   onDelete,
+  onDraw,
+  onGoToPool,
 }: {
   title: string;
   color: string;
   group: Group;
   onAction: (id: string, action: QuestAction) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onDraw: (scope: QuestType) => Promise<void>;
+  onGoToPool: () => void;
 }) {
   const canPromote = group.active.length < group.limit;
+  const draw = () => {
+    if (
+      group.active.some((q) => q.status === "DONE" || q.status === "ACTIVE") &&
+      !confirm(
+        `Start a new ${title.toLowerCase()} run? This resets progress and draws a fresh set from the pool.`,
+      )
+    )
+      return;
+    onDraw(group.type);
+  };
+
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center justify-between px-1">
@@ -215,16 +273,43 @@ function ScopeSection({
         >
           {title}
         </h2>
-        <span className="text-xs text-[var(--muted)]">
-          {group.active.length}/{group.limit} active
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--muted)]">
+            {group.active.length}/{group.limit} active
+          </span>
+          {group.pool.length > 0 && (
+            <button
+              onClick={draw}
+              title="Reset progress and draw a fresh set from the pool"
+              className="rounded-md bg-[color-mix(in_srgb,var(--purple)_16%,transparent)] px-2 py-1 text-xs font-medium text-[var(--purple)]"
+            >
+              🎲 Draw
+            </button>
+          )}
+        </div>
       </div>
       <ProgressBar done={group.done} total={group.total} color={color} />
 
-      {group.active.length === 0 && group.pool.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted)]">
-          No {title.toLowerCase()} quests yet. Add one above.
-        </p>
+      {group.active.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted)]">
+          {group.pool.length > 0 ? (
+            <>
+              No active {title.toLowerCase()} quests. Tap{" "}
+              <strong>🎲 Draw</strong> to pick {group.limit} from the pool.
+            </>
+          ) : (
+            <>
+              No {title.toLowerCase()} quests yet.{" "}
+              <button
+                onClick={onGoToPool}
+                className="font-semibold text-[var(--purple)] underline"
+              >
+                Add some in the Pool
+              </button>
+              .
+            </>
+          )}
+        </div>
       ) : (
         <div className="flex flex-col gap-2">
           {group.active.map((q) => (
@@ -238,24 +323,56 @@ function ScopeSection({
           ))}
         </div>
       )}
+    </section>
+  );
+}
 
-      {group.pool.length > 0 && (
-        <details className="group mt-1">
-          <summary className="cursor-pointer select-none px-1 text-xs text-[var(--muted)]">
-            Pool ({group.pool.length}) — extra quests beyond the active limit
-          </summary>
-          <div className="mt-2 flex flex-col gap-2">
-            {group.pool.map((q) => (
-              <QuestCard
-                key={q.id}
-                quest={q}
-                canPromote={canPromote}
-                onAction={onAction}
-                onDelete={onDelete}
-              />
-            ))}
-          </div>
-        </details>
+// Pool section: the full backlog of quests for a scope (active + queued).
+function PoolSection({
+  title,
+  color,
+  group,
+  onAction,
+  onDelete,
+}: {
+  title: string;
+  color: string;
+  group: Group;
+  onAction: (id: string, action: QuestAction) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const canPromote = group.active.length < group.limit;
+  const all = [...group.active, ...group.pool];
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between px-1">
+        <h2
+          className="text-sm font-bold uppercase tracking-wide"
+          style={{ color }}
+        >
+          {title}
+        </h2>
+        <span className="text-xs text-[var(--muted)]">
+          {group.pool.length} queued · {group.active.length}/{group.limit} active
+        </span>
+      </div>
+
+      {all.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--muted)]">
+          No {title.toLowerCase()} quests yet. Add one above.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {all.map((q) => (
+            <QuestCard
+              key={q.id}
+              quest={q}
+              canPromote={canPromote}
+              onAction={onAction}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
       )}
     </section>
   );
@@ -273,7 +390,7 @@ function TabBtn({
   return (
     <button
       onClick={onClick}
-      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+      className={`flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
         active
           ? "bg-[var(--purple)] text-[#0c0c14]"
           : "text-[var(--muted)] hover:text-[var(--foreground)]"
